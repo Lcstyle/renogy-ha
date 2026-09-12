@@ -863,3 +863,47 @@ def test_line_charging_current_only_created_for_riv_profile() -> None:
     assert "line_charging_current" in {
         entity.entity_description.key for entity in riv_entities
     }
+
+
+def test_controller_parameter_sensors_read_the_charging_block() -> None:
+    """The read-only members of the parameter block are diagnostic sensors."""
+    sensor_module = _load_sensor_module()
+
+    descriptions = {
+        description.key: description
+        for description in sensor_module.CONTROLLER_PARAMETER_SENSORS
+    }
+    assert set(descriptions) == {
+        sensor_module.KEY_SYSTEM_VOLTAGE,
+        sensor_module.KEY_END_OF_CHARGE_SOC,
+        sensor_module.KEY_END_OF_DISCHARGE_SOC,
+        sensor_module.KEY_LOAD_WORKING_MODE,
+    }
+    assert all(
+        description.entity_category == sensor_module.EntityCategory.DIAGNOSTIC
+        for description in descriptions.values()
+    )
+    assert (
+        sensor_module.SENSORS_BY_DEVICE_TYPE[sensor_module.DeviceType.CONTROLLER.value][
+            "Parameters"
+        ]
+        is sensor_module.CONTROLLER_PARAMETER_SENSORS
+    )
+
+    # the frame captured from an RNG-CTRL-RVR on 2026-09-12
+    data = {
+        sensor_module.KEY_SYSTEM_VOLTAGE: 255,
+        sensor_module.KEY_END_OF_CHARGE_SOC: 100,
+        sensor_module.KEY_END_OF_DISCHARGE_SOC: 50,
+        sensor_module.KEY_LOAD_WORKING_MODE: "always_on",
+    }
+
+    def read(key: str, sample: dict[str, Any] = data) -> Any:
+        return _read_sensor_value(sensor_module, descriptions[key], sample)
+
+    # 0xFF is "auto-detect", not 255 volts
+    assert read(sensor_module.KEY_SYSTEM_VOLTAGE) == "auto"
+    assert read(sensor_module.KEY_SYSTEM_VOLTAGE, {"system_voltage": 12}) == 12
+    assert read(sensor_module.KEY_END_OF_CHARGE_SOC) == 100
+    assert read(sensor_module.KEY_END_OF_DISCHARGE_SOC) == 50
+    assert read(sensor_module.KEY_LOAD_WORKING_MODE) == "always_on"
